@@ -1,0 +1,581 @@
+#include <Arduino.h>
+#include <BluetoothSerial.h>
+#include <ArduinoJson.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+#define BETA 3950
+float temp;
+int tempPin = 13;
+
+//int ledPin = 14;
+int inPin = 14; 
+int value = 0;
+
+int pingPin = 25;
+int echoPin = 26;
+
+int lightPin = 33;]
+
+//int magnetState = 0;
+
+long microsecondsToInches(long microseconds) {
+   return microseconds / 74 / 2;
+}
+
+long microsecondsToCentimeters(long microseconds) {
+   return microseconds / 29 / 2;
+}
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+  #error Bluetooth is not enabled! Please run make menuconfig to and enable it
+#endif
+
+// TODO -- BTC server name
+#define btcServerName "A20"
+
+// Define the BluetoothSerial
+BluetoothSerial SerialBT;
+
+// Received data
+String data = "";
+
+// The receivedData function is called when data is available on Bluetooth (see loop function)
+void receivedData() {
+  // Read the data using the appropriate SerialBT functions
+  // according to the app specifications
+  // The data is terminated by the new line character (\n)
+  while (SerialBT.available()) {
+    data = SerialBT.readStringUntil('\n');
+  }
+
+  Serial.println(data); 
+  
+  data = "";
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Initialize BTC
+  SerialBT.begin(btcServerName); //Bluetooth device name
+  Serial.println("The device started, now you can pair it with bluetooth!");
+  pinMode(inPin, INPUT);
+  //pinMode(lightPin, INPUT);                                                                                   //digital light sensor
+}
+
+void loop() {
+  // Check available Bluetooth data and perform read from the app
+  if (SerialBT.available()) {
+    
+    //receivedData();
+    String msg = SerialBT.readStringUntil('\n');
+    StaticJsonDocument<300> date_primite;
+    DeserializationError error=deserializeJson(date_primite,msg);
+    Serial.print(msg);
+    if(date_primite["action"]=="getSensors" && !error){
+      //sensor 1
+      StaticJsonDocument<500> date_trimise_temp;
+      JsonArray parametrii1 = date_trimise_temp.createNestedArray("parameters");
+      JsonObject parametru1 = parametrii1.createNestedObject();
+
+      date_trimise_temp["type"] = "Temperature";
+      date_trimise_temp["pin"] = tempPin;
+      date_trimise_temp["interface"] = "Analog";
+      date_trimise_temp["id"] = 1;
+      date_trimise_temp["teamId"] = "A20";
+      parametru1["parameter"] = "Temperatura";
+      parametru1["unit"] = "*C";
+
+      String string_json1;
+      serializeJson(date_trimise_temp,string_json1);
+      SerialBT.println(string_json1);
+
+      //sensor 2
+
+    StaticJsonDocument<500> date_trimise_us;
+      JsonArray parametrii2 = date_trimise_us.createNestedArray("parameters");
+      JsonObject parametru2 = parametrii2.createNestedObject();
+
+      date_trimise_us["type"] = "Ultrasonic";
+      date_trimise_us["pin"] = "echoPin";
+      date_trimise_us["interface"] = "Analog";
+      date_trimise_us["id"] = 2;
+      date_trimise_us["teamId"] = "A20";
+      parametru2["parameter"] = "Distanta";
+      parametru2["unit"] = "cm";
+
+      String string_json2;
+      serializeJson(date_trimise_us,string_json2);
+      SerialBT.println(string_json2);
+      
+      //sensor 3
+
+      StaticJsonDocument<500> date_trimise_light;
+      JsonArray parametrii3 = date_trimise_light.createNestedArray("parameters");
+      JsonObject parametru3 = parametrii3.createNestedObject();
+      JsonObject parametru31 = parametrii3.createNestedObject();
+
+      date_trimise_light["type"] = "Light";
+      date_trimise_light["pin"] = "lightPin";
+      date_trimise_light["interface"] = "Analog";
+      date_trimise_light["id"] = 3;
+      date_trimise_light["teamId"] = "A20";
+      parametru3["parameter"] = "Light";
+      parametru31["parameter"] = "Intensity";
+      parametru3["unit"] = "Intensitate luminoasa";
+      parametru31["unit"] = "";
+
+      String string_json3;
+      serializeJson(date_trimise_light,string_json3);
+      SerialBT.println(string_json3);
+      
+      //sensor 4
+
+      StaticJsonDocument<500> date_trimise_tilt;
+      JsonArray parametrii4 = date_trimise_tilt.createNestedArray("parameters");
+      JsonObject parametru4 = parametrii4.createNestedObject();
+
+      date_trimise_tilt["type"] = "Tilt";
+      date_trimise_tilt["pin"] = "inPin";
+      date_trimise_tilt["interface"] = "Digital";
+      date_trimise_tilt["id"] = 4;
+      date_trimise_tilt["teamId"] = "A20";
+      parametru4["parameter"] = "Tilt";
+
+      String string_json4;
+      serializeJson(date_trimise_tilt,string_json4);
+      SerialBT.println(string_json4);
+      
+    }
+    
+    if(date_primite["action"]=="getValues" && !error){
+      if(date_primite["id"]==1)
+      {
+        temp = analogRead(tempPin); 
+        temp = 1 / (log(1 / (4096/ temp - 1)) /BETA + 1.0 / 298.15) - 273.15 - 30;
+
+        StaticJsonDocument<500> date_trimise_temp;
+        JsonObject values = date_trimise_temp.createNestedObject("values");
+  
+        date_trimise_temp["id"]=1;
+        values["Temperatura"] = temp;
+        
+        date_trimise_temp["teamId"] = "A20";
+  
+        String string_json;
+        serializeJson(date_trimise_temp, string_json);
+        SerialBT.println(string_json);
+      }
+      if(date_primite["id"]==2){
+         float duration, inches, cm;
+         pinMode(pingPin, OUTPUT);
+         digitalWrite(pingPin, LOW);
+         delayMicroseconds(2);
+         digitalWrite(pingPin, HIGH);
+         delayMicroseconds(10);
+         digitalWrite(pingPin, LOW);
+         pinMode(echoPin, INPUT);                                                   
+         duration = pulseIn(echoPin, HIGH);
+         cm = microsecondsToCentimeters(duration);
+   
+
+        StaticJsonDocument<500> date_trimise_us;
+        JsonObject values = date_trimise_us.createNestedObject("values");
+  
+        date_trimise_us["id"]=2;
+        values["Distanta"] = cm;
+        
+        date_trimise_us["teamId"] = "A20";
+  
+        String string_json;
+        serializeJson(date_trimise_us, string_json);
+        SerialBT.println(string_json);
+      }
+      if(date_primite["id"]==3){
+        
+        int lightValue = analogRead(lightPin);
+
+
+        StaticJsonDocument<500> date_trimise_light;
+        JsonObject values = date_trimise_light.createNestedObject("values");
+  
+        date_trimise_light["id"]=3;
+        values["Light"] = 4095 - lightValue;
+
+         if (lightValue < 100) {
+           values["Intensity"]="Very bright";
+         } else if (lightValue < 200) {
+           values["Intensity"]="Bright";
+         } else if (lightValue < 500) {                                           
+           values["Intensity"]="Light";
+         } else if (lightValue < 800) {
+           values["Intensity"]="Dim";
+         } else {
+           values["Intensity"]="Dark";
+         }
+        
+        date_trimise_light["teamId"] = "A20";
+  
+        String string_json;
+        serializeJson(date_trimise_light, string_json);
+        SerialBT.println(string_json);
+      }
+      if(date_primite["id"]==4){
+
+          value = digitalRead(inPin);
+          
+        StaticJsonDocument<500> date_trimise_tilt;
+        JsonObject values = date_trimise_tilt.createNestedObject("values");
+  
+        date_trimise_tilt["id"]=4;
+        if(value==0)
+          values["Tilt"] = "Not tilted";
+        else if(value==1)
+          values["Tilt"] = "Tilted";
+        
+        date_trimise_tilt["teamId"] = "A20";
+  
+        String string_json;
+        serializeJson(date_trimise_tilt, string_json);
+        SerialBT.println(string_json);
+      }
+
+    }
+
+    if (date_primite["action"] == "getAverages" && !error)
+      {
+        if(date_primite["id"]==1){
+          StaticJsonDocument<512> date_trimise_temp;
+          JsonObject averages = date_trimise_temp.createNestedObject("averages");
+
+          
+          int n = date_primite["number"];
+          float tempsum=0,tempt;
+          date_trimise_temp["id"]=1;
+          date_trimise_temp["teamId"] = "A20";
+          for(int i=1; i<=n; ++i)
+            {
+              tempt=analogRead(tempPin);
+              tempt = 1 / (log(1 / (4096/ tempt - 1)) /BETA + 1.0 / 298.15) - 273.15 - 30;
+              tempsum+=tempt;
+              delay(500);
+            }
+            
+        averages["Temperatura"]=(tempsum/n);
+  
+        String json;
+        serializeJson(date_trimise_temp, json);
+        SerialBT.println(json);
+        }
+        if(date_primite["id"]==2){
+          StaticJsonDocument<512> date_trimise_us;
+          JsonObject averages = date_trimise_us.createNestedObject("averages");
+
+          float duration, inches, cm;
+          int n = date_primite["number"];
+          float cmsum=0;
+          date_trimise_us["id"]=2;
+          date_trimise_us["teamId"] = "A20";
+          pinMode(echoPin, INPUT); 
+          pinMode(pingPin, OUTPUT);
+          for(int i=1; i<=n; ++i)
+            {
+         digitalWrite(pingPin, LOW);
+         delayMicroseconds(2);
+         digitalWrite(pingPin, HIGH);
+         delayMicroseconds(10);
+         digitalWrite(pingPin, LOW);                                      
+         duration = pulseIn(echoPin, HIGH);
+         cm = microsecondsToCentimeters(duration);
+              cmsum+=cm;
+              delay(500);
+            }
+            
+        averages["Distanta"]=(cmsum/n);
+  
+        String json;
+        serializeJson(date_trimise_us, json);
+        SerialBT.println(json);
+        }
+        if(date_primite["id"]==3){
+          StaticJsonDocument<512> date_trimise_light;
+          JsonObject averages = date_trimise_light.createNestedObject("averages");
+
+         
+          int n = date_primite["number"];
+          float lightsum=0;
+          int lightValuet;
+          date_trimise_light["id"]=3;
+          date_trimise_light["teamId"] = "A20";
+          for(int i=1; i<=n; ++i)
+            {
+              lightValuet = analogRead(lightPin);
+              lightsum+=4095-lightValuet;
+              delay(500);
+            }
+            
+        averages["Light"]=(lightsum/n);
+        averages["Intensity"]="Invalid value";
+  
+        String json;
+        serializeJson(date_trimise_light, json);
+        SerialBT.println(json);
+        }
+        
+      }
+
+      if (date_primite["action"] == "startChart" && !error)
+      {
+        if(date_primite["id"]==1){
+          
+       
+        int interrupt=1;
+        float tempt;
+        String json;
+        
+        while(interrupt==1)
+        {
+          json="";
+          StaticJsonDocument<512> date_trimise_temp;
+          JsonObject points = date_trimise_temp.createNestedObject("points");
+          date_trimise_temp["id"]=1;
+          date_trimise_temp["teamId"] = "A20";
+          tempt = analogRead(tempPin); 
+          tempt = 1 / (log(1 / (4096/ tempt - 1)) /BETA + 1.0 / 298.15) - 273.15 - 30;
+          points["Temperatura"]=tempt;
+          delay(3000);
+
+          
+          serializeJson(date_trimise_temp, json);
+          SerialBT.println(json);
+
+          if(SerialBT.available())
+          {
+            String stopchart;
+            stopchart=SerialBT.readStringUntil('\n');
+            DeserializationError error = deserializeJson(date_primite, stopchart);
+            if(date_primite["action"]=="stopChart")
+            {
+              interrupt=0;
+            }
+          }
+        }
+        
+        }
+        
+        if(date_primite["id"]==2){
+          
+        
+        int interrupt=1;
+        float duration, inches, cm;
+        String json;
+        pinMode(echoPin, INPUT); 
+        pinMode(pingPin, OUTPUT);
+        while(interrupt==1)
+        {
+          json="";
+          StaticJsonDocument<512> date_trimise_us;
+          JsonObject points = date_trimise_us.createNestedObject("points");
+          date_trimise_us["id"]=1;
+          date_trimise_us["teamId"] = "A20";
+          digitalWrite(pingPin, LOW);
+          delayMicroseconds(2);
+          digitalWrite(pingPin, HIGH);
+          delayMicroseconds(10);
+          digitalWrite(pingPin, LOW);                                      
+          duration = pulseIn(echoPin, HIGH);
+          cm = microsecondsToCentimeters(duration);
+          points["Distanta"]=cm;
+          delay(3000);
+
+          
+          serializeJson(date_trimise_us, json);
+          SerialBT.println(json);
+
+          if(SerialBT.available())
+          {
+            String stopchart;
+            stopchart=SerialBT.readStringUntil('\n');
+            DeserializationError error = deserializeJson(date_primite, stopchart);
+            if(date_primite["action"]=="stopChart")
+            {
+              interrupt=0;
+            }
+          }
+        }
+        }
+
+        if(date_primite["id"]==3){
+          
+        
+        int interrupt=1;
+        int lightValuet;
+        String json;
+        while(interrupt==1)
+        {
+          json="";
+          StaticJsonDocument<512> date_trimise_light;
+          JsonObject points = date_trimise_light.createNestedObject("points");
+          date_trimise_light["id"]=3;
+          date_trimise_light["teamId"] = "A20";
+          lightValuet = analogRead(lightPin);
+          points["Light"]=4095-lightValuet;
+          if (lightValuet < 100) {
+           points["Intensity"]=4;
+         } else if (lightValuet < 200) {
+           points["Intensity"]=3;
+         } else if (lightValuet < 500) {                                           
+           points["Intensity"]=2;
+         } else if (lightValuet < 800) {
+           points["Intensity"]=1;
+         } else {
+           points["Intensity"]=0;
+         }
+          delay(3000);
+
+          
+          serializeJson(date_trimise_light, json);
+          SerialBT.println(json);
+
+          if(SerialBT.available())
+          {
+            String stopchart;
+            stopchart=SerialBT.readStringUntil('\n');
+            DeserializationError error = deserializeJson(date_primite, stopchart);
+            if(date_primite["action"]=="stopChart")
+            {
+              interrupt=0;
+            }
+          }
+        }
+        }
+
+        if(date_primite["id"]==4){
+          
+       
+        int interrupt=1;
+        int value;
+        String json;
+        
+        while(interrupt==1)
+        {
+          json="";
+          StaticJsonDocument<512> date_trimise_tilt;
+          JsonObject points = date_trimise_tilt.createNestedObject("points");
+          date_trimise_tilt["id"]=4;
+          date_trimise_tilt["teamId"] = "A20";
+          value = digitalRead(inPin);
+  
+          date_trimise_tilt["id"]=4;
+          if(value==0)
+            points["Tilt"] = 0;
+          else if(value==1)
+            points["Tilt"] = 1;
+          
+          delay(3000);
+
+          
+          serializeJson(date_trimise_tilt, json);
+          SerialBT.println(json);
+
+          if(SerialBT.available())
+          {
+            String stopchart;
+            stopchart=SerialBT.readStringUntil('\n');
+            DeserializationError error = deserializeJson(date_primite, stopchart);
+            if(date_primite["action"]=="stopChart")
+            {
+              interrupt=0;
+            }
+          }
+        }
+        
+        }
+        
+
+
+       
+      }
+  }
+  
+  
+  /*
+    temp = analogRead(tempPin);
+      //value = digitalRead(inPin); 
+      // read analog volt from sensor and save to variable temp
+      temp = 1 / (log(1 / (4096/ temp - 1)) /BETA + 1.0 / 298.15) - 273.15 - 30;
+      Serial.print("TEMPERATURE = ");                                                               //analog temperature sensor
+   Serial.print(temp);
+   Serial.print("*C ");
+      //temp = temp - (5-0.5)*100;
+   // convert the analog volt to its temperature equivalent
+   //if(value){
+   */
+/*
+   float duration, inches, cm;
+   pinMode(pingPin, OUTPUT);
+   digitalWrite(pingPin, LOW);
+   delayMicroseconds(2);
+   digitalWrite(pingPin, HIGH);
+   delayMicroseconds(10);
+   digitalWrite(pingPin, LOW);
+   pinMode(echoPin, INPUT);                                                   //analog ultrasonic sensor
+   duration = pulseIn(echoPin, HIGH);
+   //inches = microsecondsToInches(duration);
+   cm = microsecondsToCentimeters(duration);
+   //Serial.print(inches);
+   //Serial.print(" in, ");
+   Serial.print(cm);
+   Serial.print(" cm ");
+   Serial.println();
+*/
+   /*magnetState = digitalRead(magnetPin);                                       //magnet sensor
+  Serial.println(magnetState);
+  */
+
+  
+  /*int digitalValue = digitalRead(lightPin);
+  if(digitalValue == 1){
+    Serial.print("No light");
+  }
+  else if(digitalValue == 0){                              //digital light sensor
+    Serial.print("Light");
+  }
+  Serial.println(); 
+  */  
+
+  /*
+  int lightValue = analogRead(lightPin);
+
+  Serial.print("Analog reading = ");
+  Serial.print(lightValue);   
+
+ 
+  if (lightValue < 100) {
+    Serial.println(" - Very bright");
+  } else if (lightValue < 200) {
+    Serial.println(" - Bright");
+  } else if (lightValue < 500) {                                           //analog light sensor
+    Serial.println(" - Light");
+  } else if (lightValue < 800) {
+    Serial.println(" - Dim");
+  } else {
+    Serial.println(" - Dark");
+  }
+  */
+
+   /*
+   value = digitalRead(inPin);
+   if(value == 0){
+    Serial.print("Not tilted");
+   }                                                                    //digital tilt sensor
+   else if(value == 1){
+    Serial.print("Tilted");
+   }
+   Serial.println();
+   */
+   
+   delay(1000);
+  
+}
